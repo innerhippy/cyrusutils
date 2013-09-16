@@ -172,7 +172,7 @@ class CyrusMigrate(object):
 		"""
 
 		for oldmbox in self.listMailboxes(self.oldmbox):
-			source = self._imapPartitionPath(oldmbox)
+			source = os.path.join(self._imapPartitionPath(oldmbox), '')
 			newbmox = self.oldMailboxNameToNew(oldmbox)
 			target = self._imapPartitionPath(newbmox)
 			logging.debug('Syncing files from %r to %r', source, target)
@@ -187,11 +187,11 @@ class CyrusMigrate(object):
 				'--group',
 				'--owner',
 				'--dirs',
-				'--delete',
 				'--exclude=cyrus.*',
+				'--delete',
 				source,
 				target
-			],stdout=stdout)
+			], stdout=stdout)
 
 	def mailboxIdMap(self):
 		mailboxMap = {}
