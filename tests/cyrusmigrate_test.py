@@ -7,12 +7,41 @@ import pdb
 from cyrusmigrate import CyrusMigrate
 
 class MockImap(object):
-	def __init__(self, mailboxes):
+	def __init__(self):
 		super(MockImap, self).__init__()
-		self._mailboxes = mailboxes
-	
+		self._mailboxes = {
+			'user.bob': [
+				'user.bob',
+				],
+			'user.bob.*': [
+				'user.bob.ufolder1',
+				'user.bob.ufolder1.sub1',
+				'user.bob.ufolder1.sub 2',
+				'user.bob.ufolder 2',
+				'user.bob.ufolder 2.sub1',
+				'user.bob.ufolder 2.sub 2',
+				'user.bob.vfolder1@example.com',
+				'user.bob.vfolder1.sub1@example.com',
+				'user.bob.vfolder1.sub 2@example.com',
+				'user.bob.vfolder 2@example.com',
+				'user.bob.vfolder 2.sub1@example.com',
+				'user.bob.vfolder 2.sub 2@example.com',
+			],
+			'user.bob@example.com': [
+				'user.bob@example.com',
+				],
+			'user.bob.*@example.com': [
+				'user.bob.vfolder1@example.com',
+				'user.bob.vfolder1.sub1@example.com',
+				'user.bob.vfolder1.sub 2@example.com',
+				'user.bob.vfolder 2@example.com',
+				'user.bob.vfolder 2.sub1@example.com',
+				'user.bob.vfolder 2.sub 2@example.com',
+			],
+		}
+
 	def lm(self, mailbox):
-		return self._mailboxes
+		return self._mailboxes.get(mailbox, [])
 
 	def reconstruct(self, mailbox):
 		pass
@@ -41,20 +70,7 @@ class Test_CyrusMigrate(unittest.TestCase):
 		self.assertEqual(CyrusMigrate._mailboxParts('sharedMbox.another@example.com'), ('sharedMbox.another', 'example.com'))
 	
 	def test_listMailboxes(self):
-		imap = MockImap([
-			'user.bob.vfolder1@example.com',
-			'user.bob.vfolder1.sub1@example.com',
-			'user.bob.vfolder1.sub 2@example.com',
-			'user.bob.vfolder 2@example.com',
-			'user.bob.vfolder 2.sub1@example.com',
-			'user.bob.vfolder 2.sub 2@example.com',
-			'user.bob.ufolder1',
-			'user.bob.ufolder1.sub1',
-			'user.bob.ufolder1.sub 2',
-			'user.bob.ufolder 2',
-			'user.bob.ufolder 2.sub1',
-			'user.bob.ufolder 2.sub 2',
-		])
+		imap = MockImap()
 		cyrus = CyrusMigrate(imap, None, None)
 		self.assertEqual(
 			cyrus.listMailboxes('user.bob'),
@@ -79,6 +95,14 @@ class Test_CyrusMigrate(unittest.TestCase):
 				'user.bob.vfolder 2.sub1@example.com',
 				'user.bob.vfolder 2.sub 2@example.com',
 			]
+		)
+		self.assertEqual(
+			cyrus.listMailboxes('user.toby@example.com'),
+			[]
+		)
+		self.assertEqual(
+			cyrus.listMailboxes('user.toby'),
+			[]
 		)
 
 	def test_oldMailboxNameToNew_localToLocal(self):

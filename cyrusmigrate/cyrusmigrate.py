@@ -7,8 +7,8 @@ import subprocess
 import MySQLdb
 import argparse
 import pdb
-import shutil
 import tempfile
+import logging
 
 import skiplist
 
@@ -22,17 +22,21 @@ class CyrusMigrate(object):
 		self.imap = imap
 		self.oldmbox = oldMailbox
 		self.newmbox = newMailbox
-		self.verbose = verbose
+
+		if verbose:
+			logging.basicConfig(level=logging.DEBUG)
+		else:
+			logging.basicConfig(level=logging.INFO)
 
 	def __call__(self, reconstruct=False):
+
 		assert self.imap.lm(self.oldmbox), 'Source mailbox %r does not exit' % self.oldmbox
 
 		# Create new mailboxes
 		self.createNewMailboxes()
 
 		# Synchronize files from old to new
-		self.copyFiles()
-		#newMap = self.mailboxIdMap()
+		self.syncFiles()
 
 		# Reconstruct new mailboxes
 		if reconstruct:
@@ -64,20 +68,24 @@ class CyrusMigrate(object):
 			result set. The alternative would be to use imap.lm('user.bob*')
 			but this would also return all mailboxes for user.bobby
 		"""
-		mbox, domain = self._mailboxParts(topLevelMailbox)
+		if not self.imap.lm(topLevelMailbox):
+			return []
 		mailboxes = [topLevelMailbox]
-		for mbox in self.imap.lm('%s.*' % mbox):
-			if domain is None and '@' not in mbox or \
-					domain is not None and mbox.endswith('@' + domain):
-				mailboxes.append(mbox)
+
+		mailbox, domain = self._mailboxParts(topLevelMailbox)
+
+		for mbox in self.imap.lm('%s.*%s' % (mailbox, ('@' + domain if domain else ''))):
+			# Exclude domain mailboxes
+			if domain is None and '@' in mbox:
+				continue
+			mailboxes.append(mbox)
 		return mailboxes
 
 	def reconstruct(self):
 		""" Reconstructs each new mailbox
 		"""
 		for mbox in self.listMailboxes(self.newmbox):
-			if self.verbose:
-				print 'reconstructing', mbox
+			logging.debug('reconstructing %r', mbox)
 			self.imap.reconstruct(mbox)
 
 	def oldMailboxNameToNew(self, oldmbox):
@@ -110,11 +118,10 @@ class CyrusMigrate(object):
 		for mbox in self.listMailboxes(self.oldmbox):
 			newmbox = self.oldMailboxNameToNew(mbox)
 			if newmbox not in newMailboxes:
-				if self.verbose:
-					print 'reating mailbox', newmbox
+				logging.info('creating mailbox %r', newmbox)
 				self.imap.cm(newmbox)
-			elif self.verbose:
-				print 'mailbox exists', newmbox
+			else:
+				logging.debug('mailbox %r exists', newmbox)
 
 	@staticmethod
 	def _imapPartitionPath(mbox):
@@ -159,27 +166,32 @@ class CyrusMigrate(object):
 			)
 		return os.path.join(path, username + suffix)
 
-	def copyFiles(self):
-		source = self._imapPartitionPath(self.oldmbox)
-		target = self._imapPartitionPath(self.newmbox)
+	def syncFiles(self):
+		""" Sync files across from old to new, one directory at a time (non-recursive).
+			We use the --delete option to prune deleted files from the destination path
+		"""
 
-		for dirpath, dirnames, filenames in os.walk(source):
-			# Ensure target directory exists
-			targetPath = dirpath.replace(source, target)
-			assert os.path.isdir(targetPath), 'target path %r does not exist' % targetPath
+		for oldmbox in self.listMailboxes(self.oldmbox):
+			source = self._imapPartitionPath(oldmbox)
+			newbmox = self.oldMailboxNameToNew(oldmbox)
+			target = self._imapPartitionPath(newbmox)
+			logging.debug('Syncing files from %r to %r', source, target)
 
-			for mboxFile in filenames:
-				# Match only mbox files, eg "1234."
-				if re.match('^\d+\.$', mboxFile):
-					sourceMbox = os.path.join(dirpath, mboxFile)
-					targetMbox = os.path.join(targetPath, mboxFile)
-					if not os.path.exists(targetMbox):
-						if self.verbose:
-							print 'copying', targetMbox
-						shutil.copy2(sourceMbox, targetMbox)
-
-						# shutil.copy2 should preserve ownership, but doesn't
-						self._chown(targetMbox, 'cyrus', 'mail')
+			# Write the new skiplist file to new location
+			stdout = None if logging.getLogger().getEffectiveLevel() == logging.DEBUG else subprocess.PIPE
+			subprocess.check_call([
+				'rsync',
+				'--verbose',
+				'--perms',
+				'--times',
+				'--group',
+				'--owner',
+				'--dirs',
+				'--delete',
+				'--exclude=cyrus.*',
+				source,
+				target
+			],stdout=stdout)
 
 	def mailboxIdMap(self):
 		mailboxMap = {}
@@ -226,8 +238,6 @@ class CyrusMigrate(object):
 			return
 
 		mailboxIdMap = self.mailboxIdMap()
-		print mailboxIdMap
-		return
 
 		oldSeenFile = self._imapConfigPath(self.oldmbox, '.seen')
 		newSeenFile = self._imapConfigPath(self.newmbox, '.seen')
@@ -243,7 +253,7 @@ class CyrusMigrate(object):
 					tmpFile.file.write('%s\t%s\n' % (mailboxIdMap.get(v, v), keys[v]))
 
 			# Write the new skiplist file to new location
-			stdout = None if self.verbose else subprocess.PIPE
+			stdout = None if logging.getLogger().getEffectiveLevel() == logging.DEBUG else subprocess.PIPE
 			subprocess.check_call([
 				os.path.join(self._cyrusBin, 'cvt_cyrusdb'),
 				tmpFile.name,
@@ -294,9 +304,9 @@ class CyrusMigrate(object):
 			with open(newSubFile, 'w') as outFile:
 				for line in inFile:
 					# Ensure the old mailbox exists - ignore if not
-					oldmbox = self._mboxFromSubFormat(line.strip())
+					oldmbox = self._mboxFromSubFormat(line.strip('\t\n'))
 					if not self.imap.lm(oldmbox):
-						print 'Cannot find %r in seen file %r' % (oldmbox, inFile)
+						logging.warning('Cannot find %r in seen file %r', oldmbox, inFile)
 						continue
 					newmbox = self.oldMailboxNameToNew(oldmbox)
 
@@ -323,5 +333,5 @@ def main():
 	migration(reconstruct=args.reconstruct)
 
 if __name__ == '__main__':
-    sys.exit(main())
+	sys.exit(main())
 

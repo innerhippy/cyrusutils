@@ -10,6 +10,7 @@ setup(name='cyrusmigrate',
 	author_email='will@innerhippy.com',
 	license='GPLv3',
 	packages=['cyrusmigrate'],
+	scripts=['scripts/cyrusmigrate'],
 	zip_safe=False,
 	test_suite='tests',
 )
