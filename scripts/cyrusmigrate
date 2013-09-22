@@ -1,3 +1,3 @@
 #!/bin/sh
-/usr/bin/env python -c 'from cyrusmigrate import cyrusmigrate; cyrusmigrate.main()' $@
+/usr/bin/env python -c 'from cyrusutils import cyrusmigrate; cyrusmigrate.main()' $@
 
