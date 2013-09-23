@@ -4,7 +4,6 @@ import pwd
 import grp
 import sys
 import subprocess
-import MySQLdb
 import argparse
 import pdb
 import tempfile
@@ -51,7 +50,7 @@ class CyrusMigrate(object):
 	@staticmethod
 	def _mailboxParts(mailbox):
 		""" Returns tuple of root mailbox name and domain name.
-			Useful if we need to separate the mailbox name from the 
+			Useful if we need to separate the mailbox name from the
 			domain name
 			Eg:
 				user.joe@example.com, returns ('user.joe', 'example.com')
@@ -63,7 +62,7 @@ class CyrusMigrate(object):
 
 	def listMailboxes(self, topLevelMailbox):
 		""" From the top level mailbox, list all imap folders.
-			imap.lm('user.bob.*') will only return subfolders for 
+			imap.lm('user.bob.*') will only return subfolders for
 			bob, so we have to add the topLevelMailbox into the
 			result set. The alternative would be to use imap.lm('user.bob*')
 			but this would also return all mailboxes for user.bobby

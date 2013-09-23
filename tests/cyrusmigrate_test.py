@@ -1,10 +1,7 @@
-""" Unit tests for signal tracer 
+""" Unit tests for CyrusMigrate class
 """
-import sys
 import unittest
-import pdb
-
-from cyrusmigrate import CyrusMigrate
+from cyrusutils.cyrusmigrate import CyrusMigrate
 
 class MockImap(object):
 	def __init__(self):
@@ -68,7 +65,7 @@ class Test_CyrusMigrate(unittest.TestCase):
 	def test_mailboxParts_sharedVirtual(self):
 		self.assertEqual(CyrusMigrate._mailboxParts('sharedMbox@example.com'), ('sharedMbox', 'example.com'))
 		self.assertEqual(CyrusMigrate._mailboxParts('sharedMbox.another@example.com'), ('sharedMbox.another', 'example.com'))
-	
+
 	def test_listMailboxes(self):
 		imap = MockImap()
 		cyrus = CyrusMigrate(imap, None, None)
@@ -110,7 +107,6 @@ class Test_CyrusMigrate(unittest.TestCase):
 		self.assertEqual(cyrus.oldMailboxNameToNew('user.bob'), 'user.tony')
 		self.assertEqual(cyrus.oldMailboxNameToNew('user.bob.folder1'), 'user.tony.folder1')
 		self.assertEqual(cyrus.oldMailboxNameToNew('user.bob.folder 2'), 'user.tony.folder 2')
-		#self.assertRaises(Exception, cyrus.oldMailboxNameToNew, 'user.tony')
 
 	def test_oldMailboxNameToNew_localToVirtual(self):
 		cyrus = CyrusMigrate(None, 'user.bob', 'user.tony@example.com')
@@ -129,7 +125,7 @@ class Test_CyrusMigrate(unittest.TestCase):
 		self.assertEqual(cyrus.oldMailboxNameToNew('user.bob@example.com'), 'user.tony@other.net')
 		self.assertEqual(cyrus.oldMailboxNameToNew('user.bob.folder1@example.com'), 'user.tony.folder1@other.net')
 		self.assertEqual(cyrus.oldMailboxNameToNew('user.bob.folder 2@example.com'), 'user.tony.folder 2@other.net')
-	
+
 	def test_oldMailboxNameToNew_localSharedToVirtual(self):
 		cyrus = CyrusMigrate(None, 'user.bob', 'user.tony@example.com')
 		self.assertEqual(cyrus.oldMailboxNameToNew('shared'), 'shared@example.com')
