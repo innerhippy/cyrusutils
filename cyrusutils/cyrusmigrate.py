@@ -11,25 +11,42 @@ import logging
 
 import skiplist
 
+
 class CyrusMigrate(object):
 	_cyrusBin = "/usr/lib/cyrus-imapd/"
 	_headerMagic = """\241\002\213\015Cyrus mailbox header
 "The best thing about this system was that it had lots of goals."
 \t--Jim Morris on Andrew
 """
-	def __init__(self, imap, oldMailbox, newMailbox, verbose=False):
+	def __init__(self, imap, oldMailbox, newMailbox, rootPath=None, verbose=False):
 		self.imap = imap
 		self.oldmbox = oldMailbox
 		self.newmbox = newMailbox
+		self.__newMailboxes = None
+		self.__oldMailboxes = None
+		self.rootPath = rootPath or ''
+
+		if self.rootPath:
+			assert os.path.exists(self.rootPath), 'Root path %r does not exist' % self.rootPath
 
 		if verbose:
 			logging.basicConfig(level=logging.DEBUG)
 		else:
 			logging.basicConfig(level=logging.INFO)
 
-	def __call__(self, reconstruct=False):
+	@property
+	def newMailboxes(self):
+		if self.__newMailboxes is None:
+			self.__newMailboxes = list(self._listNewMailboxes())
+		return self.__newMailboxes
 
-		assert self.imap.lm(self.oldmbox), 'Source mailbox %r does not exit' % self.oldmbox
+	@property
+	def oldMailboxes(self):
+		if self.__oldMailboxes is None:
+			self.__oldMailboxes = list(self._listOldMailboxes())
+		return self.__oldMailboxes
+
+	def __call__(self, reconstruct=False):
 
 		# Create new mailboxes
 		self.createNewMailboxes()
@@ -47,6 +64,22 @@ class CyrusMigrate(object):
 		# Convert seen file
 		self.convertSeen()
 
+	@property
+	def _newPartitionRoot(self):
+		return '/var/spool/imap'
+
+	@property
+	def _oldPartitionRoot(self):
+		return os.path.normpath(self.rootPath + self._newPartitionRoot)
+
+	@property
+	def _newConfigRoot(self):
+		return '/var/lib/imap'
+
+	@property
+	def _oldConfigRoot(self):
+		return os.path.normpath(self.rootPath + self._newConfigRoot)
+
 	@staticmethod
 	def _mailboxParts(mailbox):
 		""" Returns tuple of root mailbox name and domain name.
@@ -60,30 +93,51 @@ class CyrusMigrate(object):
 		parts = mailbox.split('@')
 		return tuple(parts) if len(parts) > 1 else (parts[0], None,)
 
-	def listMailboxes(self, topLevelMailbox):
+	def __listOldMailboxesByDirectory(self):
+		rootPath = self.oldImapPartitionPath(self.oldmbox)
+
+		for dirpath, dirnames, filenames in os.walk(rootPath):
+			# Ensure target directory exists
+			if os.path.exists(os.path.join(dirpath, 'cyrus.header')):
+				match = re.match('^%s/domain/(.*?)/(.*)$' % self._oldPartitionRoot, dirpath)
+				if match: # domain match
+					yield '%s@%s' % (match.group(2).replace('/', '.'), match.group(1))
+				else: # user or shared
+					match = re.match('^%s/(.*)$' % self._oldPartitionRoot, dirpath)
+					assert match
+					yield match.group(1).replace('/', '.')
+
+	def _listOldMailboxes(self):
+		if self.rootPath:
+			return self.__listOldMailboxesByDirectory()
+		else:
+			return self.__listImapMailboxes(self.oldmbox)
+
+	def _listNewMailboxes(self):
+		return self.__listImapMailboxes(self.newmbox)
+
+	def __listImapMailboxes(self, topLevelMailbox):
 		""" From the top level mailbox, list all imap folders.
 			imap.lm('user.bob.*') will only return subfolders for
 			bob, so we have to add the topLevelMailbox into the
 			result set. The alternative would be to use imap.lm('user.bob*')
 			but this would also return all mailboxes for user.bobby
 		"""
-		if not self.imap.lm(topLevelMailbox):
-			return []
-		mailboxes = [topLevelMailbox]
+		if self.imap.lm(topLevelMailbox):
+			yield topLevelMailbox
 
-		mailbox, domain = self._mailboxParts(topLevelMailbox)
+			mailbox, domain = self._mailboxParts(topLevelMailbox)
 
-		for mbox in self.imap.lm('%s.*%s' % (mailbox, ('@' + domain if domain else ''))):
-			# Exclude domain mailboxes
-			if domain is None and '@' in mbox:
-				continue
-			mailboxes.append(mbox)
-		return mailboxes
+			for mbox in self.imap.lm('%s.*%s' % (mailbox, ('@' + domain if domain else ''))):
+				# Exclude domain mailboxes
+				if domain is None and '@' in mbox:
+					continue
+				yield mbox
 
 	def reconstruct(self):
 		""" Reconstructs each new mailbox
 		"""
-		for mbox in self.listMailboxes(self.newmbox):
+		for mbox in self.newMailboxes:
 			logging.debug('reconstructing %r', mbox)
 			self.imap.reconstruct(mbox)
 
@@ -112,18 +166,22 @@ class CyrusMigrate(object):
 			This is safe to call multiple times as we check
 			if the new mailbox exists
 		"""
-		newMailboxes = self.listMailboxes(self.newmbox)
 
-		for mbox in self.listMailboxes(self.oldmbox):
+		for mbox in self.oldMailboxes:
 			newmbox = self.oldMailboxNameToNew(mbox)
-			if newmbox not in newMailboxes:
+			if newmbox not in self.newMailboxes:
 				logging.info('creating mailbox %r', newmbox)
 				self.imap.cm(newmbox)
 			else:
 				logging.debug('mailbox %r exists', newmbox)
 
-	@staticmethod
-	def _imapPartitionPath(mbox):
+	def oldImapPartitionPath(self, mbox):
+		return self.__imapPartitionPath(self._oldPartitionRoot, mbox)
+
+	def newImapPartitionPath(self, mbox):
+		return self.__imapPartitionPath(self._newPartitionRoot, mbox)
+
+	def __imapPartitionPath(self, rootPath, mbox):
 		""" Returns the imap partition file path for the mailbox.
 			(see imapd.conf partition-default settings)
 			Eg:
@@ -134,12 +192,18 @@ class CyrusMigrate(object):
 
 		name, domain = CyrusMigrate._mailboxParts(mbox)
 		if domain:
-			return os.path.join('/var/spool/imap/domain', domain, name.replace('.', '/'))
+			return os.path.join(rootPath, 'domain', domain, name.replace('.', '/'))
 		else:
-			return os.path.join('/var/spool/imap', name.replace('.', '/'))
+			return os.path.join(rootPath, name.replace('.', '/'))
+
+	def oldImapConfigPath(self, suffix):
+		return self.__imapConfigPath(self._oldConfigRoot, self.oldmbox, suffix)
+
+	def newImapConfigPath(self, suffix):
+		return self.__imapConfigPath(self._newConfigRoot, self.newmbox, suffix)
 
 	@staticmethod
-	def _imapConfigPath(mbox, suffix):
+	def __imapConfigPath(rootPath, mbox, suffix):
 		""" Returns the full paths to a config file for the given user mailbox.
 			(see imapd.conf configdirectory settings).
 			Eg:
@@ -152,7 +216,8 @@ class CyrusMigrate(object):
 		username = mbox_name.split('.')[1]
 		if domain: # virtual domain
 			path = os.path.join(
-				'/var/lib/imap/domain',
+				rootPath,
+				'domain',
 				domain[0],
 				domain,
 				'user',
@@ -160,7 +225,8 @@ class CyrusMigrate(object):
 			)
 		else: # local user
 			path = os.path.join(
-				'/var/lib/imap/user',
+				rootPath,
+				'user',
 				username[0]
 			)
 		return os.path.join(path, username + suffix)
@@ -170,10 +236,10 @@ class CyrusMigrate(object):
 			We use the --delete option to prune deleted files from the destination path
 		"""
 
-		for oldmbox in self.listMailboxes(self.oldmbox):
-			source = os.path.join(self._imapPartitionPath(oldmbox), '')
+		for oldmbox in self.oldMailboxes:
+			source = self.oldImapPartitionPath(oldmbox) + os.path.sep # need trailing slash for rsync
 			newbmox = self.oldMailboxNameToNew(oldmbox)
-			target = self._imapPartitionPath(newbmox)
+			target = self.newImapPartitionPath(newbmox)
 			logging.debug('Syncing files from %r to %r', source, target)
 
 			# Write the new skiplist file to new location
@@ -193,12 +259,14 @@ class CyrusMigrate(object):
 			], stdout=stdout)
 
 	def mailboxIdMap(self):
+		""" returns a dict containing map of old to new mailbox ids
+		"""
 		mailboxMap = {}
-		for oldmbox in self.listMailboxes(self.oldmbox):
-			path = self._imapPartitionPath(oldmbox)
+		for oldmbox in self.oldMailboxes:
+			path = self.oldImapPartitionPath(oldmbox)
 			oldmboxId = self._extractMailboxId(path)
 			newmbox = self.oldMailboxNameToNew(oldmbox)
-			path = self._imapPartitionPath(newmbox)
+			path = self.newImapPartitionPath(newmbox)
 			newmboxId = self._extractMailboxId(path)
 			mailboxMap[oldmboxId] = newmboxId
 		return mailboxMap
@@ -238,8 +306,8 @@ class CyrusMigrate(object):
 
 		mailboxIdMap = self.mailboxIdMap()
 
-		oldSeenFile = self._imapConfigPath(self.oldmbox, '.seen')
-		newSeenFile = self._imapConfigPath(self.newmbox, '.seen')
+		oldSeenFile = self.oldImapConfigPath('.seen')
+		newSeenFile = self.newImapConfigPath('.seen')
 		assert os.path.exists(oldSeenFile)
 
 		with open(oldSeenFile, 'rb') as fp:
@@ -294,24 +362,24 @@ class CyrusMigrate(object):
 		if not self._isUserMigration:
 			return
 
-		oldSubFile = self._imapConfigPath(self.oldmbox, '.sub')
-		newSubFile = self._imapConfigPath(self.newmbox, '.sub')
-
+		oldSubFile = self.oldImapConfigPath('.sub')
+		newSubFile = self.newImapConfigPath('.sub')
+		allMailboxes = self.imap.lm()
 		self._createDirectories(os.path.dirname(newSubFile))
 
 		with open(oldSubFile, 'r') as inFile:
 			with open(newSubFile, 'w') as outFile:
 				for line in inFile:
-					# Ensure the old mailbox exists - ignore if not
 					oldmbox = self._mboxFromSubFormat(line.strip('\t\n'))
-					if not self.imap.lm(oldmbox):
-						logging.warning('Cannot find %r in seen file %r', oldmbox, inFile)
-						continue
 					newmbox = self.oldMailboxNameToNew(oldmbox)
 
-					# Check this mbox exists (should have been created at start)
-					assert self.imap.lm(newmbox), 'Cannot find mailbox %r' % newmbox
-					outFile.write('%s\t\n' % self._mboxToSubFormat(newmbox))
+					# Ensure the old mailbox exists - ignore if not
+					if newmbox in allMailboxes:
+						# Write new seen file
+						outFile.write('%s\t\n' % self._mboxToSubFormat(newmbox))
+					else:
+						logging.warning('Cannot find mailbox %r in seen file %r', oldmbox, inFile.name)
+
 		self._chown(newSubFile, 'cyrus', 'mail')
 
 
@@ -328,7 +396,7 @@ def main():
 	imap = cyruslib.CYRUS("imaps://localhost:993")
 	imap.login('cyrus', 'password')
 
-	migration = CyrusMigrate(imap, args.oldmbox, args.newmbox, verbose=args.verbose)
+	migration = CyrusMigrate(imap, args.oldmbox, args.newmbox, rootPath='/old', verbose=args.verbose)
 	migration(reconstruct=args.reconstruct)
 
 if __name__ == '__main__':

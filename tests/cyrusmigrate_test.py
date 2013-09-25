@@ -47,7 +47,7 @@ class MockImap(object):
 		pass
 
 
-class Test_CyrusMigrate(unittest.TestCase):
+class Test_CyrusMigrateLocal(unittest.TestCase):
 	""" Test basic SignalRecorder class
 	"""
 	def test_mailboxParts_userLocal(self):
@@ -68,9 +68,9 @@ class Test_CyrusMigrate(unittest.TestCase):
 
 	def test_listMailboxes(self):
 		imap = MockImap()
-		cyrus = CyrusMigrate(imap, None, None)
+		cyrus = CyrusMigrate(imap, 'user.bob', None)
 		self.assertEqual(
-			cyrus.listMailboxes('user.bob'),
+				cyrus.oldMailboxes,
 			[
 				'user.bob',
 				'user.bob.ufolder1',
@@ -81,34 +81,14 @@ class Test_CyrusMigrate(unittest.TestCase):
 				'user.bob.ufolder 2.sub 2',
 			]
 		)
-		self.assertEqual(
-			cyrus.listMailboxes('user.bob@example.com'),
-			[
-				'user.bob@example.com',
-				'user.bob.vfolder1@example.com',
-				'user.bob.vfolder1.sub1@example.com',
-				'user.bob.vfolder1.sub 2@example.com',
-				'user.bob.vfolder 2@example.com',
-				'user.bob.vfolder 2.sub1@example.com',
-				'user.bob.vfolder 2.sub 2@example.com',
-			]
-		)
-		self.assertEqual(
-			cyrus.listMailboxes('user.toby@example.com'),
-			[]
-		)
-		self.assertEqual(
-			cyrus.listMailboxes('user.toby'),
-			[]
-		)
 
-	def test_oldMailboxNameToNew_localToLocal(self):
+	def test_oldMailboxNameToNew_toLocal(self):
 		cyrus = CyrusMigrate(None, 'user.bob', 'user.tony')
 		self.assertEqual(cyrus.oldMailboxNameToNew('user.bob'), 'user.tony')
 		self.assertEqual(cyrus.oldMailboxNameToNew('user.bob.folder1'), 'user.tony.folder1')
 		self.assertEqual(cyrus.oldMailboxNameToNew('user.bob.folder 2'), 'user.tony.folder 2')
 
-	def test_oldMailboxNameToNew_localToVirtual(self):
+	def test_oldMailboxNameToNew_toVirtual(self):
 		cyrus = CyrusMigrate(None, 'user.bob', 'user.tony@example.com')
 		self.assertEqual(cyrus.oldMailboxNameToNew('user.bob'), 'user.tony@example.com')
 		self.assertEqual(cyrus.oldMailboxNameToNew('user.bob.folder1'), 'user.tony.folder1@example.com')
@@ -137,16 +117,24 @@ class Test_CyrusMigrate(unittest.TestCase):
 		self.assertEqual(cyrus.oldMailboxNameToNew('shared.sub@example.com'), 'shared.sub')
 
 	def test_partitionPath(self):
-		self.assertEqual(CyrusMigrate._imapPartitionPath('user.bob'), '/var/spool/imap/user/bob')
-		self.assertEqual(CyrusMigrate._imapPartitionPath('user.bob.folder 1'), '/var/spool/imap/user/bob/folder 1')
-		self.assertEqual(CyrusMigrate._imapPartitionPath('user.bob.folder 1.sub'), '/var/spool/imap/user/bob/folder 1/sub')
-		self.assertEqual(CyrusMigrate._imapPartitionPath('user.bob@example.com'), '/var/spool/imap/domain/example.com/user/bob')
-		self.assertEqual(CyrusMigrate._imapPartitionPath('user.bob.folder 1@example.com'), '/var/spool/imap/domain/example.com/user/bob/folder 1')
+		cyrus = CyrusMigrate(None, None, 'user.bob')
+		self.assertEqual(cyrus.newImapPartitionPath('user.bob'), '/var/spool/imap/user/bob')
+		self.assertEqual(cyrus.newImapPartitionPath('user.bob.folder 1'), '/var/spool/imap/user/bob/folder 1')
+		self.assertEqual(cyrus.newImapPartitionPath('user.bob.folder 1.sub'), '/var/spool/imap/user/bob/folder 1/sub')
+	
+	def test_partitionPath_virtual(self):
+		cyrus = CyrusMigrate(None, None, 'user.bob')
+		self.assertEqual(cyrus.newImapPartitionPath('user.bob@example.com'), '/var/spool/imap/domain/example.com/user/bob')
+		self.assertEqual(cyrus.newImapPartitionPath('user.bob.folder 1@example.com'), '/var/spool/imap/domain/example.com/user/bob/folder 1')
 
-	def test_configPath(self):
-		self.assertEqual(CyrusMigrate._imapConfigPath('user.bob', '.seen'), '/var/lib/imap/user/b/bob.seen')
-		self.assertEqual(CyrusMigrate._imapConfigPath('user.bob@example.net', '.seen'), '/var/lib/imap/domain/e/example.net/user/b/bob.seen')
-		self.assertRaises(Exception, CyrusMigrate._imapConfigPath, 'shared.folder', '.seen')
+	def test_configPath_user(self):
+		cyrus = CyrusMigrate(None, None, 'user.bob')
+		self.assertEqual(cyrus.newImapConfigPath('.seen'), '/var/lib/imap/user/b/bob.seen')
+
+	def test_configPath_virtual(self):
+		cyrus = CyrusMigrate(None, None, 'user.bob@example.net')
+		self.assertEqual(cyrus.newImapConfigPath('.seen'), '/var/lib/imap/domain/e/example.net/user/b/bob.seen')
+		self.assertRaises(Exception, cyrus.newImapConfigPath, 'shared.folder', '.seen')
 
 	def test_mboxFromSubFormat(self):
 		self.assertEqual(CyrusMigrate._mboxFromSubFormat('shared'), 'shared')
