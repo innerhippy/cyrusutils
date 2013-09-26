@@ -389,6 +389,7 @@ def main():
 
 	parser.add_argument('oldmbox', help='old mailbox name (eg user.bob)')
 	parser.add_argument('newmbox', help='new mailbox name (eg user.bob@example.com)')
+	parser.add_argument('-p', '--prefix', help="Root directory prefix")
 	parser.add_argument('-r', '--reconstruct', action='store_true', help="reconstruct")
 	parser.add_argument('-v', '--verbose', action='store_true', help="verbose")
 	args = parser.parse_args()
@@ -396,7 +397,7 @@ def main():
 	imap = cyruslib.CYRUS("imaps://localhost:993")
 	imap.login('cyrus', 'password')
 
-	migration = CyrusMigrate(imap, args.oldmbox, args.newmbox, rootPath='/old', verbose=args.verbose)
+	migration = CyrusMigrate(imap, args.oldmbox, args.newmbox, rootPath=args.prefix, verbose=args.verbose)
 	migration(reconstruct=args.reconstruct)
 
 if __name__ == '__main__':
