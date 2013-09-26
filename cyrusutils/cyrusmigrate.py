@@ -172,6 +172,8 @@ class CyrusMigrate(object):
 			if newmbox not in self.newMailboxes:
 				logging.info('creating mailbox %r', newmbox)
 				self.imap.cm(newmbox)
+				# Put new mailbox in out list
+				self.__newMailboxes.append(newmbox)
 			else:
 				logging.debug('mailbox %r exists', newmbox)
 
