@@ -47,6 +47,7 @@ class CyrusMigrate(object):
 		return self.__oldMailboxes
 
 	def __call__(self, reconstruct=False):
+		logging.info('--- Converting %r to %r ---', self.oldmbox, self.newmbox)
 
 		# Create new mailboxes
 		self.createNewMailboxes()
@@ -261,16 +262,35 @@ class CyrusMigrate(object):
 			], stdout=stdout)
 
 	def mailboxIdMap(self):
-		""" returns a dict containing map of old to new mailbox ids
+		""" Returns a dict containing map of old to new mailbox ids.
+			This uses the old subscription file to get all mailboxes 
+			for the user. Using self.oldMailboxes alone will not 
+			give us shared folders
 		"""
+		# Get top level mailbox - this is not included in the subscription file
 		mailboxMap = {}
-		for oldmbox in self.oldMailboxes:
+		allOldMailboxes = []
+		oldSubFile = self.oldImapConfigPath('.sub')
+
+		with open(oldSubFile, 'r') as f:
+			for line in f:
+				oldmbox = self._mboxFromSubFormat(line.strip('\t\n'))
+				allOldMailboxes.append(oldmbox)
+
+		# Get all unique mailboxes from sub file and usual oldMailbox list
+		for oldmbox in set(allOldMailboxes + self.oldMailboxes):
 			path = self.oldImapPartitionPath(oldmbox)
+			if not os.path.exists(path):
+				logging.warning('Cannot find old mailbox path %r', path)
+				continue
 			oldmboxId = self._extractMailboxId(path)
 			newmbox = self.oldMailboxNameToNew(oldmbox)
 			path = self.newImapPartitionPath(newmbox)
+			assert os.path.exists(path), 'Cannot find new mailbox path %r' % path
 			newmboxId = self._extractMailboxId(path)
+
 			mailboxMap[oldmboxId] = newmboxId
+
 		return mailboxMap
 
 	def _extractMailboxId(self, path):
@@ -313,13 +333,16 @@ class CyrusMigrate(object):
 		assert os.path.exists(oldSeenFile)
 
 		with open(oldSeenFile, 'rb') as fp:
-			header = skiplist.get_header(fp)
+			skiplist.get_header(fp)
 			values, keys = skiplist.getkeys(fp)
 
 		try:
+			numConverted = 0
 			with tempfile.NamedTemporaryFile(delete=False) as tmpFile:
 				for v in values:
-					tmpFile.file.write('%s\t%s\n' % (mailboxIdMap.get(v, v), keys[v]))
+					if v in mailboxIdMap:
+						numConverted += 1
+						tmpFile.file.write('%s\t%s\n' % (mailboxIdMap.get(v, v), keys[v]))
 
 			# Write the new skiplist file to new location
 			stdout = None if logging.getLogger().getEffectiveLevel() == logging.DEBUG else subprocess.PIPE
@@ -332,6 +355,8 @@ class CyrusMigrate(object):
 			], stdout=stdout)
 			self._chown(newSeenFile, 'cyrus', 'mail')
 		finally:
+			if numConverted != len(values):
+				logging.warning('Only converted %d/%d mailbox ids for %r', numConverted, len(values), newSeenFile)
 			os.unlink(tmpFile.name)
 
 	@property
