@@ -97,7 +97,7 @@ class CyrusMigrate(object):
 	def __listOldMailboxesByDirectory(self):
 		rootPath = self.oldImapPartitionPath(self.oldmbox)
 
-		for dirpath, dirnames, filenames in os.walk(rootPath):
+		for dirpath, _, _ in os.walk(rootPath):
 			# Ensure target directory exists
 			if os.path.exists(os.path.join(dirpath, 'cyrus.header')):
 				match = re.match('^%s/domain/(.*?)/(.*)$' % self._oldPartitionRoot, dirpath)
