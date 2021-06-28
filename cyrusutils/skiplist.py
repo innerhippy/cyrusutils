@@ -116,7 +116,7 @@ def getkeys(fp):
             break
 
         rtype = unpack('>I', stype)[0]
-        if not types.has_key(rtype):
+        if rtype not in types:
             log(MAIN, 'Invalid type %d' % rtype)
             continue
 
@@ -164,7 +164,7 @@ def getkeys(fp):
 
 if __name__ == '__main__':
     if len(argv) != 2:
-        print 'Usage: %s skiplist.file' % argv[0]
+        print('Usage: %s skiplist.file' % argv[0])
         sys_exit()
 
     fp = open(argv[1], 'rb')
@@ -174,4 +174,4 @@ if __name__ == '__main__':
 
     if debug: sys_exit()
     for v in values:
-        print '%s\t%s' % (v, keys[v])
+        print(('%s\t%s') % (v, keys[v]))

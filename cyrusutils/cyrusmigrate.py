@@ -9,7 +9,7 @@ import pdb
 import tempfile
 import logging
 
-import skiplist
+import cyrusutils.skiplist as skiplist
 
 
 class CyrusMigrate(object):
@@ -319,7 +319,7 @@ class CyrusMigrate(object):
 		for part in [p for p in toCreate.split('/') if p]:
 			path = os.path.join(path, part)
 			if not os.path.exists(path):
-				os.mkdir(path, 0750)
+				os.mkdir(path, 0o750)
 				self._chown(path, 'cyrus', 'mail')
 
 	def convertSeen(self):
@@ -411,7 +411,7 @@ class CyrusMigrate(object):
 
 
 def main():
-	import cyruslib
+	from cyrusutils import cyruslib
 	parser = argparse.ArgumentParser(description='Converts local user imap accounts to domain user accounts')
 
 	parser.add_argument('oldmbox', help='old mailbox name (eg user.bob)')
