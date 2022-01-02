@@ -19,7 +19,7 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.
 #
-# Requires python >= 2.3
+# Requires python >= 3.0
 #
 
 __version__ = '0.8.5'
@@ -36,8 +36,8 @@ try:
     import imaplib
     import re
     from binascii import b2a_base64
-except ImportError as e:
-    print (e)
+except ImportError as exc:
+    print (str(exc))
     exit(1)
 
 Commands = {

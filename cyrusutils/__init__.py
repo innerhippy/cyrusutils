@@ -1,1 +1,1 @@
-from cyrusutils.cyrusmigrate import CyrusMigrate
+from .cyrusmigrate import CyrusMigrate
