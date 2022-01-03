@@ -122,7 +122,7 @@ class IMAP4(imaplib.IMAP4):
         ### normal users cannot use dump command
         try:
             res, msg = self._simple_command('DUMP', 'NIL')
-            if msg[0].lower().find('denied') == -1:
+            if msg[0].decode('utf-8').lower().find('denied') == -1:
                 return True
         except:
             pass
@@ -193,7 +193,7 @@ class IMAP4_SSL(imaplib.IMAP4_SSL):
         ### normal users cannot use dump command
         try:
             res, msg = self._simple_command('DUMP', 'NIL')
-            if msg[0].lower().find('denied') == -1:
+            if msg[0].decode('utf-8').lower().find('denied') == -1:
                 return True
         except:
             pass
