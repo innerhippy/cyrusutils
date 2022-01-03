@@ -5,7 +5,7 @@ def readme():
         return f.read()
 
 setup(name='cyrusutils',
-	version="1.0",
+	version="1.1",
 	description='Cyrus imap account conversion utilities',
 	long_description=readme(),
 	url='http://github.com/innerhippy/cyrusutils',
