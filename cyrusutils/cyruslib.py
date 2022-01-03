@@ -362,7 +362,7 @@ class CYRUS:
             if ok(res):
                 return res, msg
         except Exception as info:
-            error = info.args[0].split(':').pop().strip()
+            error = info.args[0].decode('utf-8').split(':').pop().strip()
             if error.upper().startswith('BAD'):
                 error = error.split('BAD', 1).pop().strip()
                 error = unquote(error[1:-1], '\'')
@@ -387,7 +387,7 @@ class CYRUS:
             res, msg = self.m.login(username, password)
             admin = self.m.isadmin()
         except Exception as info:
-            error = info.args[0].split(':').pop().strip()
+            error = info.args[0].decode('utf-8').split(':').pop().strip()
             self.__doexception("LOGIN", error)
         if admin or forceNoAdmin:
             self.ADMIN = username
@@ -421,7 +421,7 @@ class CYRUS:
         try:
             res, msg = self.m.logout()
         except Exception as info:
-            error = info.args[0].split(':').pop().strip()
+            error = info.args[0].decode('utf-8').split(':').pop().strip()
             self.__doexception("LOGOUT", error)
         self.AUTH = False
         self.ADMIN = None
@@ -550,7 +550,7 @@ class CYRUS:
                 userid = self.encode(aclList[i])
                 rights = aclList[i + 1]
             except Exception as info:
-                self.__verbose( '[GETACL %s] BAD: %s' % (mailbox, info.args[0]) )
+                self.__verbose( '[GETACL %s] BAD: %s' % (mailbox, info.args[0].decode('utf-8')) )
                 raise self.__doraise("GETACL")
             self.__verbose( '[GETACL %s] %s %s' % (mailbox, userid, rights) )
             acls[userid] = rights
