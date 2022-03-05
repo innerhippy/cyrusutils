@@ -258,7 +258,7 @@ class IMAP4_SSL(imaplib.IMAP4_SSL):
         if ok(res):
             self.state = 'AUTH'
         return res, data
-        
+
 
 class CYRUS:
     ERROR = {}
@@ -345,7 +345,6 @@ class CYRUS:
         else:
             idError = [self.ERROR.get("IMAPLIB")[0]]
         raise CYRUSError( idError[0], mode, msg )
-    
 
     def __prepare(self, command, mailbox=True):
         if not self.AUTH:
@@ -360,7 +359,7 @@ class CYRUS:
         try:
             res, msg = wrapped(*args)
             if ok(res):
-                return res, msg
+                return res, [m.decode('utf-8') for m in msg]
         except Exception as info:
             error = info.args[0].decode('utf-8').split(':').pop().strip()
             if error.upper().startswith('BAD'):
